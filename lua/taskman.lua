@@ -50,7 +50,7 @@ local show_tasks_popup = function(pattern, dir)
 	local entries = {}
 	for _, item in ipairs(tasks) do
 		local file = vim.fn.bufname(item.bufnr)
-		table.insert(entries, string.format("%s  %s", file, item.text))
+		table.insert(entries, string.format("%s  %s", item.text, file))
 	end
 
 	vim.ui.select(entries, { prompt = "Tasks" }, function(choice, idx)
