@@ -1,149 +1,94 @@
-local layout = require("snacks.layout")
 local M = {}
 
-M.setup = function()
-  vim.api.nvim_create_user_command(
-    "NewTask",
-    function()
-      M.open_new_task_form()
-    end,
-    { desc = "Create a new task using a floating form" }
-  )
+-- user config
+local config = {
+	task_dir = nil, -- if nil → fallback to cwd
+}
+
+-- ripgrep patterns
+local PATTERNS = {
+	due = "^- \\[ \\]",
+	done = "^- \\[[xX]\\]",
+}
+
+local function get_task_dir()
+	if config.task_dir then
+		return vim.fn.expand(config.task_dir) -- handles ~
+	end
+	return vim.fn.getcwd()
 end
 
----@class task.line
----@field tasks string[]
----@field urgency string[]
----@field tag string[]
----@field date_due string[]
----@field date_done string[]
----@field date_created string[]
+--- Takes some files and parses them for tasks
+---@param pattern string Search string
+---@param dir string Search dir
+---@return table - A table with 'tasks'
+local parse_tasks = function(pattern, dir)
+	local cmd = { "rg", "--vimgrep", "--glob", "*.md", pattern, dir }
+	local out = vim.fn.systemlist(cmd)
 
---- Takes some lines and parses them for tasks
----@param lines string []: The lines in the buffer
----@return task.line
-local parse_tasks = function(lines)
-  local tasks = { tasks = {} }
-  local seperator = "^%-%s%[%s%]"
+	-- Use Neovim’s builtin vimgrep parser
+	vim.fn.setqflist({}, "r", { title = "Tasks", lines = out })
+	-- Extract parsed entries
+	local items = vim.fn.getqflist()
 
-  for _, line in ipairs(lines) do
-    if line:find(seperator) then
-      table.insert(tasks.tasks, line)
-    end
-  end
-
-  return tasks
+	return { tasks = items }
 end
 
-local create_centered_window = function(buf, height, width)
-  local opts = {
-    relative = "editor",
-    style = "minimal",
-    border = "rounded",
-    width = width,
-    height = height,
-    row = math.floor((vim.o.lines - height) / 2),
-    col = math.floor((vim.o.columns - width) / 2),
-  }
+--- Show tasks in a popup and jump on select.
+---@param pattern string
+---@param dir string
+local show_tasks_popup = function(pattern, dir)
+	local result = parse_tasks(pattern, dir)
+	local tasks = result.tasks
 
-  return vim.api.nvim_open_win(buf, true, opts)
+	if #tasks == 0 then
+		vim.notify("No tasks found", vim.log.levels.INFO)
+		return
+	end
+
+	-- Build display strings for the popup
+	local entries = {}
+	for _, item in ipairs(tasks) do
+		local file = vim.fn.bufname(item.bufnr)
+		table.insert(entries, string.format("%s  %s", file, item.text))
+	end
+
+	vim.ui.select(entries, { prompt = "Tasks" }, function(choice, idx)
+		if not choice or not idx then
+			return
+		end
+		local item = tasks[idx]
+		local file = vim.fn.bufname(item.bufnr)
+
+		-- Open file and jump to location
+		vim.cmd.edit(vim.fn.fnameescape(file))
+		vim.api.nvim_win_set_cursor(0, { item.lnum, item.col - 1 })
+	end)
 end
 
-local trim = function(value)
-  return (value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+M.setup = function(opts)
+	config = vim.tbl_extend("force", config, opts or {})
+
+	vim.api.nvim_create_user_command("TaskList", function(cmd_opts)
+		local arg = cmd_opts.args
+		if arg == "" then
+			arg = "due"
+		end
+
+		local pattern = PATTERNS[arg]
+		if not pattern then
+			vim.notify("TaskList: use :TaskList due or :TaskList done", vim.log.levels.ERROR)
+			return
+		end
+
+		local dir = get_task_dir()
+		show_tasks_popup(pattern, dir)
+	end, {
+		nargs = "?",
+		complete = function()
+			return { "due", "done" }
+		end,
+	})
 end
 
-local extract_field = function(label, line)
-  local pattern = string.format("^%s%s*(.*)", vim.pesc(label), vim.pesc(":"))
-  local match = line:match(pattern)
-
-  return match and trim(match) or ""
-end
-
-local insert_task_line = function(buf, cursor, values)
-  local task = trim(values.task)
-
-  if task == "" then
-    vim.notify("Task description is required", vim.log.levels.WARN)
-    return
-  end
-
-  local line = "- [ ] " .. task
-
-  if values.due ~= "" then
-    line = string.format("%s (due: %s)", line, values.due)
-  end
-
-  if values.tags ~= "" then
-    line = string.format("%s [%s]", line, values.tags)
-  end
-
-  local position = cursor[1]
-
-  vim.api.nvim_buf_set_lines(buf, position, position, true, { line })
-  vim.api.nvim_win_set_cursor(0, { position + 1, 0 })
-end
-
-local function format_initial_lines()
-  return {
-    "New Task",
-    "Task: ",
-    "Due date: ",
-    "Tags: ",
-    "",
-    "Press <Enter> to save or <Esc> to cancel.",
-  }
-end
-
-M.open_new_task_form = function()
-  local original_win = vim.api.nvim_get_current_win()
-  local original_buf = vim.api.nvim_get_current_buf()
-  local cursor = vim.api.nvim_win_get_cursor(original_win)
-
-  local form_buf = vim.api.nvim_create_buf(false, true)
-  local form_height = 6
-  local form_width = math.max(40, math.floor(vim.o.columns * 0.4))
-
-  local form_win = create_centered_window(form_buf, form_height, form_width)
-
-  vim.api.nvim_buf_set_option(form_buf, "buftype", "nofile")
-  vim.api.nvim_buf_set_option(form_buf, "bufhidden", "wipe")
-  vim.api.nvim_buf_set_option(form_buf, "modifiable", true)
-  vim.api.nvim_win_set_option(form_win, "cursorline", true)
-  vim.api.nvim_buf_set_lines(form_buf, 0, -1, false, format_initial_lines())
-  vim.api.nvim_win_set_cursor(form_win, { 2, 7 })
-
-  local function close_form()
-    if vim.api.nvim_win_is_valid(form_win) then
-      vim.api.nvim_win_close(form_win, true)
-    end
-  end
-
-  local function submit_form()
-    local lines = vim.api.nvim_buf_get_lines(form_buf, 0, -1, false)
-
-    local values = {
-      task = extract_field("Task", lines[2] or ""),
-      due = extract_field("Due date", lines[3] or ""),
-      tags = extract_field("Tags", lines[4] or ""),
-    }
-
-    close_form()
-    vim.api.nvim_set_current_win(original_win)
-    insert_task_line(original_buf, cursor, values)
-  end
-
-  vim.keymap.set("n", "<CR>", submit_form, { buffer = form_buf, nowait = true })
-  vim.keymap.set("n", "<Esc>", close_form, { buffer = form_buf, nowait = true })
-  vim.keymap.set("n", "q", close_form, { buffer = form_buf, nowait = true })
-end
-
---Define cutom command :TaskNew)
-Snacks.layout.new({
-	layout = {
-		width = 0.6,
-		height = 0.6,
-		zindex = 50,
-	},
-})
 return M
