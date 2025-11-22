@@ -48,9 +48,14 @@ local show_tasks_popup = function(pattern, dir)
 
 	-- Build display strings for the popup
 	local entries = {}
+	local max_len = 0
+	for _, item in ipairs(tasks) do
+		max_len = math.max(max_len, #item.text)
+	end
+
 	for _, item in ipairs(tasks) do
 		local file = vim.fn.bufname(item.bufnr)
-		table.insert(entries, string.format("%s  %s", item.text, file))
+		table.insert(entries, string.format("%-" .. max_len .. "s    %s", item.text, file))
 	end
 
 	vim.ui.select(entries, { prompt = "Tasks" }, function(choice, idx)
