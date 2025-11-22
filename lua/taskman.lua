@@ -86,7 +86,7 @@ M.setup = function(opts)
 	end, {
 		nargs = "?",
 		complete = function()
-			return { "due", "done" }
+			return { "todo", "done" }
 		end,
 	})
 end
