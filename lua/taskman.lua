@@ -47,8 +47,8 @@ local show_tasks_popup = function(pattern, dir)
 	end
 
 	-- Build display strings for the popup
-	local entries = {}
-	local max_len = 0
+	local entries = {} -- These are the tasks
+	local max_len = 0 -- To make it pretty, I just add max len spaces.. lol
 	for _, item in ipairs(tasks) do
 		max_len = math.max(max_len, #item.text)
 	end

@@ -1,5 +1,7 @@
 # taskman
-A tiny Neovim plugin for extracting Markdown task lists (- [ ] and - [x]) from a directory and displaying them in a vims native selection tool (vim.ui.select) with jump navigation.
+A tiny Neovim plugin for extracting Markdown task lists (- [ ] and - [x]) from a directory and displaying them in vims native selection tool (vim.ui.select) with jump navigation and fuzzy finding.
+
+![Example](img/example.gif) 
 
 Uses fast ripgrep (rg --vimgrep) and Neovim’s built-in quickfix parser.
 
@@ -28,7 +30,7 @@ return {
 Set the task_dir (string) in opts. This should be the directory where your Markdown files live.
 
 ```lua
-      task_dir = "~/Documents/YOUR-DIRECTORY-HERE",
+task_dir = "~/Documents/YOUR-DIRECTORY-HERE",
 ```
 
 If omitted, it defaults to:
